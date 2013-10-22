@@ -1,0 +1,27 @@
+{
+  "name": "mongo-fast-join",
+  "version": "0.0.1",
+  "description": "Join subdocuments into other mongo documents from other collections",
+  "main": "Join.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Bill4Time/mongo-fast-join.git"
+  },
+  "keywords": [
+    "mongodb",
+    "mongo",
+    "nodejs",
+    "node",
+    "javascript",
+    "join",
+    "mongo-join"
+  ],
+  "author": "Bill4Time",
+  "license": "BSD-2-Clause",
+  "bugs": {
+    "url": "https://github.com/Bill4Time/mongo-fast-join/issues"
+  }
+}
