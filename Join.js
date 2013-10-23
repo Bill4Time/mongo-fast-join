@@ -37,16 +37,7 @@ module.exports = function () {
             });
         };
 
-        /**
-         * Simply call the first argument if it is the typeof a function
-         * @param fn The argument to call if it is a function
-         * @param args the arguments to call the function with
-         */
-        function callIfFunction (fn, args) {
-            if (typeof fn === "function") {
-                fn.apply(fn, args);
-            }
-        }
+
 
         /**
          * Add the index of the left result from the query to the hash map/bin being used to associate left results with
@@ -54,11 +45,12 @@ module.exports = function () {
          * @param leftResult The result being entered into the map/bin
          * @param index The index that this result lives at in the returned array
          * @param joinLookups The find arguments array being built
+         * @param inLookups the array with the correct in lookups
          * @param keyHashBin The hashmap of the being built
          * @param rightKeys The keys for the right side of the join to use for the find query
          * @param accessors The accessor functions built to find the value of the specified join keys
          */
-        function addLeftResultAddressToHashBin (leftResult, index, joinLookups, keyHashBin, rightKeys, accessors) {
+        function addLeftResultAddressToHashBin (leftResult, index, joinLookups, inLookups, keyHashBin, rightKeys, accessors) {
             var currentHashBin = keyHashBin,
                 lookupObject = {},
                 accessorLength = accessors.length;
@@ -67,6 +59,7 @@ module.exports = function () {
                 var value = accessor(leftResult);
 
                 lookupObject[rightKeys[accessorIndex]] = value;
+                inLookups[accessorIndex].push(value);
 
                 if (accessorIndex + 1 === accessorLength) {
                     if (Array.isArray(currentHashBin[value])) {
@@ -74,7 +67,7 @@ module.exports = function () {
                     } else {
                         currentHashBin[value] = [index];
                     }
-                } else if (typeof currentHashBin[value] === "undefined") {
+                } else if (isNullOrUndefined(currentHashBin[value])) {
                     currentHashBin = currentHashBin[value] = {};
                 } else {
                     currentHashBin = currentHashBin[value];
@@ -105,8 +98,13 @@ module.exports = function () {
                 keyHashBin = {},
                 accessors = [],
                 joinLookups = [],
+                inLookups = [],
                 leftKeys = args.leftKeys,
                 rightKeys = args.rightKeyPropertyPaths;//place to put incoming join results
+
+            rightKeys.forEach(function (key, index) {
+                inLookups[index] = [];
+            });
 
             console.time("Build accessors");
             leftKeys.forEach(function (key) {//generate the accessors for each entry in the composite key
@@ -119,14 +117,14 @@ module.exports = function () {
             //get the path first
             console.time("Build hashmap");
             for (i = 0; i < length; i += 1) {
-                addLeftResultAddressToHashBin(results[i], i, joinLookups, keyHashBin, rightKeys, accessors);
+                addLeftResultAddressToHashBin(results[i], i, joinLookups, inLookups, keyHashBin, rightKeys, accessors);
             }//create the path
             console.timeEnd("Build hashmap");
             if (!Array.isArray(srcDataArray)) {
                 srcDataArray = [srcDataArray];
             }
 
-            subqueries = getSubqueries(joinLookups, args.pageSize || 5);//example
+            subqueries = getSubqueries(inLookups, joinLookups, args.pageSize || 5, rightKeys);//example
             console.time("join query");
             runSubqueries(subqueries, function (items) {
                 var un;
@@ -165,15 +163,33 @@ module.exports = function () {
         return this;
     };
 
-    function getSubqueries (queries, pageSize) {
+    function getSubqueries (inQueries, orQueries, pageSize, rightKeys) {
         var subqueries = [],
             numberOfChunks,
-            i;
+            i,
+            inQuery,
+            orQuery,
+            from,
+            to;
         //                                                   this is a stupid way to turn numbers into 1
-        numberOfChunks = (queries.length / pageSize) + (!!(queries.length % pageSize));
+        numberOfChunks = (orQueries.length / pageSize) + (!!(orQueries.length % pageSize));
 
         for (i = 0; i < numberOfChunks; i += 1) {
-            subqueries.push(queries.slice(i * pageSize, (i * pageSize) + pageSize));
+            inQuery = {};
+            from = i * pageSize;
+            to = from + pageSize;
+
+            inQueries.forEach(function (inLookupArray, index) {
+                inQuery[rightKeys[index]] = {$in: inLookupArray.slice(from, to)};
+            });
+
+            orQuery = { $or: orQueries.slice(from, to)};
+
+            subqueries.push([{
+                $match: inQuery
+            }, {
+                $match: orQuery
+            }]);
         }
 
         return subqueries;
@@ -190,7 +206,7 @@ module.exports = function () {
             args = [{ $or: subQueries[i]}];
             args = args.concat(findArgs);
 
-            collection.find({ $or: subQueries[i]}).toArray(function (err, results) {
+            collection.aggregate(subQueries[i], function (err, results) {
                 joinedSet = joinedSet.concat(results);
                 responsesReceived += 1;
 
@@ -244,15 +260,24 @@ module.exports = function () {
         for (i = 0; i < length; i += 1) {
             var rightRecord = joinSet[i],
                 currentBin = joinArgs.keyHashBin;
+
+            if (isNullOrUndefined(rightRecord)) {
+                continue;//move onto the next, can't join on records that don't exist
+            }
+
             //for each entry in the join set add it to the source document at the correct index
             rightKeyAccessors.forEach(function (accessor) {
-                currentBin = currentBin[accessor(rightRecord)];
+                try {
+                    currentBin = currentBin[accessor(rightRecord)];
+                } catch (e) {
+                    debugger;
+                }
             });
 
             currentBin.forEach(function (sourceDataIndex) {
                 var theObject = sourceData[sourceDataIndex][joinArgs.newKey];
 
-                if (typeof theObject === "undefined") {//Handle adding multiple matches to the same sub document
+                if (isNullOrUndefined(theObject)) {//Handle adding multiple matches to the same sub document
                     sourceData[sourceDataIndex][joinArgs.newKey] = rightRecord;
                 } else if (Array.isArray(theObject)) {
                     theObject.push(rightRecord);
@@ -261,6 +286,10 @@ module.exports = function () {
                 }
             });
         }
+    }
+
+    function isNullOrUndefined (val) {
+        return typeof val === "undefined" || val === null;
     }
 
     /**
@@ -283,5 +312,16 @@ module.exports = function () {
         }
 
         return object
+    }
+
+    /**
+     * Simply call the first argument if it is the typeof a function
+     * @param fn The argument to call if it is a function
+     * @param args the arguments to call the function with
+     */
+    function callIfFunction (fn, args) {
+        if (typeof fn === "function") {
+            fn.apply(fn, args);
+        }
     }
 };
