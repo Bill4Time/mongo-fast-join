@@ -3,9 +3,8 @@ module.exports = function () {
     this.query = function (queryCollection, query, fields, options) {
         //joinStack holds all the join args to be used, is used like a callstack when exec is called
         var joinStack = [],
-            finalCallback;//This is the final function specified as the callback to call
-
-        var cursor = queryCollection.find(query, fields, options),
+            finalCallback,//This is the final function specified as the callback to call
+            cursor = queryCollection.find(query, fields, options),
             that = this;
 
         /**
