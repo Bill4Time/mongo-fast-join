@@ -1,5 +1,4 @@
 module.exports = function () {
-
     this.query = function (queryCollection, query, fields, options) {
         //joinStack holds all the join args to be used, is used like a callstack when exec is called
         var joinStack = [],
@@ -36,16 +35,12 @@ module.exports = function () {
             });
         };
 
-        function addPlainValueToHashBin (bin, value, index) {
-            if (Array.isArray(bin[value])) {
-                bin[value].push(index);
-
-            } else {
-                bin[value] = [index];
-
-            }
-        }
-
+        /**
+         * Put a new key in the hash map/bin and return the new location.
+         * @param bin The object in which the key should be placed
+         * @param value The key value
+         * @returns {*}
+         */
         function putKeyInBin (bin, value) {
             if (isNullOrUndefined(bin[value])) {
                 bin = bin[value] = {$val: value};
@@ -56,6 +51,12 @@ module.exports = function () {
             return bin;//where we are in the hash tree
         }
 
+        /**
+         * Put a new index value into the array at the given bin, making a new array if there is none.
+         * @param currentBin The location in which to put the array
+         * @param index the index value to put in the array
+         * @returns the newly created array if there was one created. Must be assigned into the correct spot
+         */
         function pushOrPut (currentBin, index) {
             var temp = currentBin;
             if (Array.isArray(currentBin)) {
@@ -68,13 +69,22 @@ module.exports = function () {
             return temp;
         }
 
-        function buildOutHashTableIndices (bin, leftValue, index, accessors, rightKeys, inLookup, orLookups, currentOr) {
+        /**
+         * Create the hash table which maps unique left key combination to an array of numbers representing the indexes of the
+         * source data where those unique left key combinations were found. Use this map in the joining process to add
+         * join subdocuments to the source data.
+         * @param bin The bin object into which keys and indexes will be put
+         * @param leftValue the left document from which to retrieve key values
+         * @param index the index in the source data that the leftvalue lives at
+         * @param accessors The accessor functions which retrieve the value for each join key from the leftValue.
+         * @param rightKeys The keys in the right hand set which are being joined on
+         */
+        function buildHashTableIndices (bin, leftValue, index, accessors, rightKeys) {
             var i,
                 length = accessors.length,
                 lastBin;
 
             for (i = 0; i < length; i += 1) {
-                //if accessor [ leftValue ] is an array call this on each of those values
                 var val = accessors[i](leftValue);
                 if (typeof val === "undefined") {
                     return;
@@ -99,13 +109,10 @@ module.exports = function () {
                         var rightKeySubset = rightKeys.slice(i + 1);
 
                         if (isNullOrUndefined(bin[subDocumentValue])) {
-                            bin[subDocumentValue] = {$val: subDocumentValue};
+                            bin[subDocumentValue] = {$val: subDocumentValue};//Store $val to maintain the data type
                         }
 
-                        try {
-                            buildOutHashTableIndices(bin[subDocumentValue], leftValue, index, accessors.slice(i + 1), rightKeySubset, inLookup, orLookups, currentOr);
-
-                        } catch (e) {debugger}
+                        buildHashTableIndices(bin[subDocumentValue], leftValue, index, accessors.slice(i + 1), rightKeySubset);
                     });
                     return;//don't go through the rest of the accessors, this recursion will take care of those
                 } else {
@@ -114,12 +121,18 @@ module.exports = function () {
             }
         }
 
-
+        /**
+         * Build the in and or queries that will be used to query for the join documents.
+         * @param keyHashBin The bin to use to retrieve the query vals from
+         * @param rightKeys The keys which will exists in the join documents
+         * @param level The current level of recursion which will correspond to the accessor and the index of the right key
+         * @param valuePath The values that have been gathered so far. Ordinally corresponding to the right keys
+         * @param orQueries The total list of $or queries generated
+         * @param inQueries The total list of $in queries generated
+         */
         function buildQueriesFromHashBin (keyHashBin, rightKeys, level, valuePath, orQueries, inQueries) {
-            try{
-                var keys = Object.getOwnPropertyNames(keyHashBin),
-                    or;
-            } catch (e) {debugger}
+            var keys = Object.getOwnPropertyNames(keyHashBin),
+                or;
 
             valuePath = valuePath || [];
 
@@ -159,7 +172,6 @@ module.exports = function () {
                 fields = args.fields,//The fields to retrieve for the join queries, must include the join key
                 callback = args.callback,//The callback to call at this level of the join
 
-                findArgs,
                 length,
                 i,
 
@@ -186,7 +198,7 @@ module.exports = function () {
             //get the path first
             console.time("Build hashmap");
             for (i = 0; i < length; i += 1) {
-                buildOutHashTableIndices(keyHashBin, results[i], i, accessors, rightKeys, inQueries, joinLookups, {});
+                buildHashTableIndices(keyHashBin, results[i], i, accessors, rightKeys, inQueries, joinLookups, {});
             }//create the path
 
             buildQueriesFromHashBin(keyHashBin, rightKeys, 0, [], joinLookups, inQueries);
@@ -215,13 +227,15 @@ module.exports = function () {
                     callIfFunction(finalCallback, [un, srcDataArray]);
                 }
                 callIfFunction(callback, [un, srcDataArray]);
-            }, joinCollection, []);
-
+            }, joinCollection);
         }
 
         return this;
     };
 
+    /**
+     * Get the paged subqueries
+     */
     function getSubqueries (inQueries, orQueries, pageSize, rightKeys) {
         var subqueries = [],
             numberOfChunks,
@@ -256,7 +270,10 @@ module.exports = function () {
         return subqueries;
     }
 
-    function runSubqueries (subQueries, callback, collection, findArgs) {
+    /**
+     * Run the sub queries individually, leveraging concurrency on the server for better performance.
+     */
+    function runSubqueries (subQueries, callback, collection) {
         var i,
             responsesReceived = 0,
             length = subQueries.length,
@@ -331,21 +348,18 @@ module.exports = function () {
             rightKeyAccessors.forEach(function (accessor) {
                 currentBin = currentBin[accessor(rightRecord)];
             });
-            try {
-                currentBin.forEach(function (sourceDataIndex) {
-                    var theObject = sourceData[sourceDataIndex][joinArgs.newKey];
 
-                    if (isNullOrUndefined(theObject)) {//Handle adding multiple matches to the same sub document
-                        sourceData[sourceDataIndex][joinArgs.newKey] = rightRecord;
-                    } else if (Array.isArray(theObject)) {
-                        theObject.push(rightRecord);
-                    } else {
-                        sourceData[sourceDataIndex][joinArgs.newKey] = [theObject, rightRecord];
-                    }
-                });
-            } catch (e) {
-                debugger;
-            }
+            currentBin.forEach(function (sourceDataIndex) {
+                var theObject = sourceData[sourceDataIndex][joinArgs.newKey];
+
+                if (isNullOrUndefined(theObject)) {//Handle adding multiple matches to the same sub document
+                    sourceData[sourceDataIndex][joinArgs.newKey] = rightRecord;
+                } else if (Array.isArray(theObject)) {
+                    theObject.push(rightRecord);
+                } else {
+                    sourceData[sourceDataIndex][joinArgs.newKey] = [theObject, rightRecord];
+                }
+            });
         }
     }
 
@@ -370,19 +384,12 @@ module.exports = function () {
                 if (Array.isArray(object)) {//if it's an array find the values from those results
                     results = [];
                     object.forEach(function (subDocument) {
-                        try {
-                            temp = safeObjectAccess.apply(
-                                safeObjectAccess,
-                                [subDocument].concat(Array.prototype.slice.apply(args, [i, length]))
-                            );
-                        } catch (e) {
-                            debugger;
-                        }
-
-
+                        temp = safeObjectAccess.apply(
+                            safeObjectAccess,
+                            [subDocument].concat(Array.prototype.slice.apply(args, [i, length]))
+                        );
 
                         if (Array.isArray(temp)) {
-                            if (typeof temp[0] === "undefined") {debugger}
                             results = results.concat(temp);
                         } else {
                             results.push(temp);
