@@ -115,7 +115,7 @@ module.exports = function () {
         }
 
 
-        function buildOrQueriesFromHashBin (keyHashBin, rightKeys, level, valuePath, orQueries) {
+        function buildQueriesFromHashBin (keyHashBin, rightKeys, level, valuePath, orQueries, inQueries) {
             try{
                 var keys = Object.getOwnPropertyNames(keyHashBin),
                     or;
@@ -126,6 +126,7 @@ module.exports = function () {
             if (level === rightKeys.length) {
                 or = {};
                 rightKeys.forEach(function (key, i) {
+                    inQueries[i].push(valuePath[i]);
                     or[key] = valuePath[i];
                 });
 
@@ -135,10 +136,11 @@ module.exports = function () {
             } else {
                 keys.forEach(function (key) {
                     if (key !== "$val") {
-                        var newPath = valuePath.slice();
+                        var newPath = valuePath.slice(),
+                            value = keyHashBin[key].$val;
 
-                        newPath.push(keyHashBin[key].$val);//now have a copied array
-                        buildOrQueriesFromHashBin(keyHashBin[key], rightKeys, level + 1, newPath, orQueries);
+                        newPath.push(value);//now have a copied array
+                        buildQueriesFromHashBin(keyHashBin[key], rightKeys, level + 1, newPath, orQueries, inQueries);
                     }
                 });
             }
@@ -165,12 +167,12 @@ module.exports = function () {
                 keyHashBin = {},
                 accessors = [],
                 joinLookups = [],
-                inLookups = {},
+                inQueries = [],
                 leftKeys = args.leftKeys,
                 rightKeys = args.rightKeyPropertyPaths;//place to put incoming join results
 
-            rightKeys.forEach(function (key, index) {
-                inLookups[key] = [];
+            rightKeys.forEach(function () {
+                inQueries.push([]);
             });
 
             console.time("Build accessors");
@@ -184,20 +186,17 @@ module.exports = function () {
             //get the path first
             console.time("Build hashmap");
             for (i = 0; i < length; i += 1) {
-                buildOutHashTableIndices(keyHashBin, results[i], i, accessors, rightKeys, inLookups, joinLookups, {});
-                //lookups = addLeftResultAddressToHashBin(results[i], i, joinLookups, inLookups, keyHashBin, rightKeys, accessors);
-//                joinLookups = lookups.jl;
-//                inLookups = lookups.il;
+                buildOutHashTableIndices(keyHashBin, results[i], i, accessors, rightKeys, inQueries, joinLookups, {});
             }//create the path
 
-            buildOrQueriesFromHashBin(keyHashBin, rightKeys, 0, [], joinLookups);
+            buildQueriesFromHashBin(keyHashBin, rightKeys, 0, [], joinLookups, inQueries);
 
             console.timeEnd("Build hashmap");
             if (!Array.isArray(srcDataArray)) {
                 srcDataArray = [srcDataArray];
             }
 
-            subqueries = getSubqueries(inLookups, joinLookups, args.pageSize || 5, rightKeys);//example
+            subqueries = getSubqueries(inQueries, joinLookups, args.pageSize || 5, rightKeys);//example
             console.time("join query");
             runSubqueries(subqueries, function (items) {
                 var un;
@@ -218,19 +217,6 @@ module.exports = function () {
                 callIfFunction(callback, [un, srcDataArray]);
             }, joinCollection, []);
 
-            //query = { $or: joinLookups };//{ joinKey: { $or: keyArray } }
-
-            findArgs = [query];
-
-            if (fields) {
-                findArgs.push(fields);
-            }
-            //Looks like find keys on arguments.length and passing an undefined breaks it, hence this apply klunk
-
-            //for join collection / something to get the right page size, fire off a query for all perform joining when
-            //the join set has been fully compiled
-//            joinCollection.find.apply(joinCollection, findArgs)
-//                .toArray();
         }
 
         return this;
@@ -252,16 +238,16 @@ module.exports = function () {
             from = i * pageSize;
             to = from + pageSize;
 
-//            rightKeys.forEach(function (key, index) {
-//                inQuery[rightKeys[index]] = {$in: inQueries[key]/*.slice(from, to)*/};
-//            });
+            rightKeys.forEach(function (key, index) {
+                inQuery[rightKeys[index]] = {$in: inQueries[index].slice(from, to)};
+            });
 
             orQuery = { $or: orQueries.slice(from, to)};
 
             subqueries.push([
-//                {
-//                $match: inQuery
-//            },
+                {
+                    $match: inQuery
+                },
                 {
                     $match: orQuery
                 }]);
@@ -276,16 +262,20 @@ module.exports = function () {
             length = subQueries.length,
             joinedSet = [];//The array where the results are going to get stuffed
 
-        for (i = 0; i < subQueries.length; i += 1) {
+        if (subQueries.length > 0) {
+            for (i = 0; i < subQueries.length; i += 1) {
 
-            collection.aggregate(subQueries[i], function (err, results) {
-                joinedSet = joinedSet.concat(results);
-                responsesReceived += 1;
+                collection.aggregate(subQueries[i], function (err, results) {
+                    joinedSet = joinedSet.concat(results);
+                    responsesReceived += 1;
 
-                if (responsesReceived === length) {
-                    callback(joinedSet);
-                }
-            });
+                    if (responsesReceived === length) {
+                        callback(joinedSet);
+                    }
+                });
+            }
+        } else {
+            callback([]);
         }
 
         return joinedSet;
