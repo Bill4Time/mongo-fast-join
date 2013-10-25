@@ -36,44 +36,112 @@ module.exports = function () {
             });
         };
 
+        function addPlainValueToHashBin (bin, value, index) {
+            if (Array.isArray(bin[value])) {
+                bin[value].push(index);
 
+            } else {
+                bin[value] = [index];
 
-        /**
-         * Add the index of the left result from the query to the hash map/bin being used to associate left results with
-         * the leftKeys match pattern
-         * @param leftResult The result being entered into the map/bin
-         * @param index The index that this result lives at in the returned array
-         * @param joinLookups The find arguments array being built
-         * @param inLookups the array with the correct in lookups
-         * @param keyHashBin The hashmap of the being built
-         * @param rightKeys The keys for the right side of the join to use for the find query
-         * @param accessors The accessor functions built to find the value of the specified join keys
-         */
-        function addLeftResultAddressToHashBin (leftResult, index, joinLookups, inLookups, keyHashBin, rightKeys, accessors) {
-            var currentHashBin = keyHashBin,
-                lookupObject = {},
-                accessorLength = accessors.length;
+            }
+        }
 
-            accessors.forEach(function (accessor, accessorIndex) {
-                var value = accessor(leftResult);
+        function putKeyInBin (bin, value) {
+            if (isNullOrUndefined(bin[value])) {
+                bin = bin[value] = {$val: value};
+            } else {
+                bin = bin[value];
+            }
 
-                lookupObject[rightKeys[accessorIndex]] = value;
-                inLookups[accessorIndex].push(value);
+            return bin;//where we are in the hash tree
+        }
 
-                if (accessorIndex + 1 === accessorLength) {
-                    if (Array.isArray(currentHashBin[value])) {
-                        currentHashBin[value].push(index);
-                    } else {
-                        currentHashBin[value] = [index];
-                    }
-                } else if (isNullOrUndefined(currentHashBin[value])) {
-                    currentHashBin = currentHashBin[value] = {};
-                } else {
-                    currentHashBin = currentHashBin[value];
+        function pushOrPut (currentBin, index) {
+            var temp = currentBin;
+            if (Array.isArray(currentBin)) {
+                if (currentBin.indexOf(index) === -1) {
+                    currentBin.push(index);//only add if this is a unique index to prevent dup'ing indexes, and associations
                 }
-            });
+            } else {
+                temp = [index];
+            }
+            return temp;
+        }
 
-            joinLookups.push(lookupObject);
+        function buildOutHashTableIndices (bin, leftValue, index, accessors, rightKeys, inLookup, orLookups, currentOr) {
+            var i,
+                length = accessors.length,
+                lastBin;
+
+            for (i = 0; i < length; i += 1) {
+                //if accessor [ leftValue ] is an array call this on each of those values
+                var val = accessors[i](leftValue);
+                if (typeof val === "undefined") {
+                    return;
+                }
+
+                if (i + 1 === length) {
+                    if (Array.isArray(val)) {
+                        //for each value in val, put that key in
+                        val.forEach(function (subValue) {
+                            var boot = putKeyInBin(bin, subValue);
+                            bin[subValue] = pushOrPut(boot, index);
+                            bin[subValue].$val = subValue;
+                        });
+
+                    } else {
+                        bin[val] = pushOrPut(bin[val], index);
+                        bin[val].$val = val;
+                    }
+                } else if (Array.isArray(val)) {
+                    lastBin = bin;
+                    val.forEach(function (subDocumentValue) {//sub vals are for basically supposed to be payment ids
+                        var rightKeySubset = rightKeys.slice(i + 1);
+
+                        if (isNullOrUndefined(bin[subDocumentValue])) {
+                            bin[subDocumentValue] = {$val: subDocumentValue};
+                        }
+
+                        try {
+                            buildOutHashTableIndices(bin[subDocumentValue], leftValue, index, accessors.slice(i + 1), rightKeySubset, inLookup, orLookups, currentOr);
+
+                        } catch (e) {debugger}
+                    });
+                    return;//don't go through the rest of the accessors, this recursion will take care of those
+                } else {
+                    bin = putKeyInBin(bin, val);
+                }
+            }
+        }
+
+
+        function buildOrQueriesFromHashBin (keyHashBin, rightKeys, level, valuePath, orQueries) {
+            try{
+                var keys = Object.getOwnPropertyNames(keyHashBin),
+                    or;
+            } catch (e) {debugger}
+
+            valuePath = valuePath || [];
+
+            if (level === rightKeys.length) {
+                or = {};
+                rightKeys.forEach(function (key, i) {
+                    or[key] = valuePath[i];
+                });
+
+                orQueries.push(or);
+                //start returning
+                //take the value path and begin making objects out of it
+            } else {
+                keys.forEach(function (key) {
+                    if (key !== "$val") {
+                        var newPath = valuePath.slice();
+
+                        newPath.push(keyHashBin[key].$val);//now have a copied array
+                        buildOrQueriesFromHashBin(keyHashBin[key], rightKeys, level + 1, newPath, orQueries);
+                    }
+                });
+            }
         }
 
         /**
@@ -97,12 +165,12 @@ module.exports = function () {
                 keyHashBin = {},
                 accessors = [],
                 joinLookups = [],
-                inLookups = [],
+                inLookups = {},
                 leftKeys = args.leftKeys,
                 rightKeys = args.rightKeyPropertyPaths;//place to put incoming join results
 
             rightKeys.forEach(function (key, index) {
-                inLookups[index] = [];
+                inLookups[key] = [];
             });
 
             console.time("Build accessors");
@@ -116,8 +184,14 @@ module.exports = function () {
             //get the path first
             console.time("Build hashmap");
             for (i = 0; i < length; i += 1) {
-                addLeftResultAddressToHashBin(results[i], i, joinLookups, inLookups, keyHashBin, rightKeys, accessors);
+                buildOutHashTableIndices(keyHashBin, results[i], i, accessors, rightKeys, inLookups, joinLookups, {});
+                //lookups = addLeftResultAddressToHashBin(results[i], i, joinLookups, inLookups, keyHashBin, rightKeys, accessors);
+//                joinLookups = lookups.jl;
+//                inLookups = lookups.il;
             }//create the path
+
+            buildOrQueriesFromHashBin(keyHashBin, rightKeys, 0, [], joinLookups);
+
             console.timeEnd("Build hashmap");
             if (!Array.isArray(srcDataArray)) {
                 srcDataArray = [srcDataArray];
@@ -178,17 +252,19 @@ module.exports = function () {
             from = i * pageSize;
             to = from + pageSize;
 
-            inQueries.forEach(function (inLookupArray, index) {
-                inQuery[rightKeys[index]] = {$in: inLookupArray.slice(from, to)};
-            });
+//            rightKeys.forEach(function (key, index) {
+//                inQuery[rightKeys[index]] = {$in: inQueries[key]/*.slice(from, to)*/};
+//            });
 
             orQuery = { $or: orQueries.slice(from, to)};
 
-            subqueries.push([{
-                $match: inQuery
-            }, {
-                $match: orQuery
-            }]);
+            subqueries.push([
+//                {
+//                $match: inQuery
+//            },
+                {
+                    $match: orQuery
+                }]);
         }
 
         return subqueries;
@@ -196,14 +272,11 @@ module.exports = function () {
 
     function runSubqueries (subQueries, callback, collection, findArgs) {
         var i,
-            args,
             responsesReceived = 0,
             length = subQueries.length,
             joinedSet = [];//The array where the results are going to get stuffed
 
         for (i = 0; i < subQueries.length; i += 1) {
-            args = [{ $or: subQueries[i]}];
-            args = args.concat(findArgs);
 
             collection.aggregate(subQueries[i], function (err, results) {
                 joinedSet = joinedSet.concat(results);
@@ -266,24 +339,23 @@ module.exports = function () {
 
             //for each entry in the join set add it to the source document at the correct index
             rightKeyAccessors.forEach(function (accessor) {
-                try {
-                    currentBin = currentBin[accessor(rightRecord)];
-                } catch (e) {
-                    debugger;
-                }
+                currentBin = currentBin[accessor(rightRecord)];
             });
+            try {
+                currentBin.forEach(function (sourceDataIndex) {
+                    var theObject = sourceData[sourceDataIndex][joinArgs.newKey];
 
-            currentBin.forEach(function (sourceDataIndex) {
-                var theObject = sourceData[sourceDataIndex][joinArgs.newKey];
-
-                if (isNullOrUndefined(theObject)) {//Handle adding multiple matches to the same sub document
-                    sourceData[sourceDataIndex][joinArgs.newKey] = rightRecord;
-                } else if (Array.isArray(theObject)) {
-                    theObject.push(rightRecord);
-                } else {
-                    sourceData[sourceDataIndex][joinArgs.newKey] = [theObject, rightRecord];
-                }
-            });
+                    if (isNullOrUndefined(theObject)) {//Handle adding multiple matches to the same sub document
+                        sourceData[sourceDataIndex][joinArgs.newKey] = rightRecord;
+                    } else if (Array.isArray(theObject)) {
+                        theObject.push(rightRecord);
+                    } else {
+                        sourceData[sourceDataIndex][joinArgs.newKey] = [theObject, rightRecord];
+                    }
+                });
+            } catch (e) {
+                debugger;
+            }
         }
     }
 
@@ -298,10 +370,36 @@ module.exports = function () {
     function safeObjectAccess () {
         var object = arguments[0],
             length = arguments.length,
-            i;
+            args = arguments,
+            i,
+            results,
+            temp;
 
-        if (typeof object !== "undefined" && object !== null) {
+        if (!isNullOrUndefined(object)) {
             for (i = 1; i < length; i += 1) {
+                if (Array.isArray(object)) {//if it's an array find the values from those results
+                    results = [];
+                    object.forEach(function (subDocument) {
+                        try {
+                            temp = safeObjectAccess.apply(
+                                safeObjectAccess,
+                                [subDocument].concat(Array.prototype.slice.apply(args, [i, length]))
+                            );
+                        } catch (e) {
+                            debugger;
+                        }
+
+
+
+                        if (Array.isArray(temp)) {
+                            if (typeof temp[0] === "undefined") {debugger}
+                            results = results.concat(temp);
+                        } else {
+                            results.push(temp);
+                        }
+                    });
+                    break;
+                }
                 if (typeof object !== "undefined") {
                     object = object[arguments[i]];
                 } else {
@@ -310,7 +408,7 @@ module.exports = function () {
             }
         }
 
-        return object
+        return results || object
     }
 
     /**
