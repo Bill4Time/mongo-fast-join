@@ -20,6 +20,13 @@
         "mongo-join"
     ],
     "author": "Bill4Time",
+    "contributors": [{
+        "name": "Kyle Housley",
+        "email": "khousley@bill4time.com"
+    }, {
+        "name": "Jeremy Diviney",
+        "email": "jeremy@bill4time.com"
+    }],
     "license": "BSD-2-Clause",
     "bugs": {
         "url": "https://github.com/Bill4Time/mongo-fast-join/issues"
