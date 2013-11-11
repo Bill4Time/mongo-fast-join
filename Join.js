@@ -201,39 +201,31 @@ module.exports = function () {
                 inQueries.push([]);
             });
 
-            console.time("Build accessors");
             leftKeys.forEach(function (key) {//generate the accessors for each entry in the composite key
                 accessors.push(getKeyValueAccessorFromKey(key));
             });
-            console.timeEnd("Build accessors");
 
             length = results.length;
 
             //get the path first
-            console.time("Build hashmap");
             for (i = 0; i < length; i += 1) {
                 buildHashTableIndices(keyHashBin, results[i], i, accessors, rightKeys, inQueries, joinLookups, {});
             }//create the path
 
             buildQueriesFromHashBin(keyHashBin, rightKeys, 0, [], joinLookups, inQueries);
 
-            console.timeEnd("Build hashmap");
             if (!Array.isArray(srcDataArray)) {
                 srcDataArray = [srcDataArray];
             }
 
             subqueries = getSubqueries(inQueries, joinLookups, args.pageSize || 5, rightKeys);//example
-            console.time("join query");
             runSubqueries(subqueries, function (items) {
                 var un;
-                console.timeEnd("join query");
-                console.time("performJoining");
                 performJoining(srcDataArray, items, {
                     rightKeyPropertyPaths: rightKeyPropertyPaths,
                     newKey: newKey,
                     keyHashBin: keyHashBin
                 });
-                console.timeEnd("performJoining");
 
                 if (joinStack.length > 0) {
                     arrayJoin(srcDataArray, joinStack.shift());
