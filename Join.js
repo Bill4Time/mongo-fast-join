@@ -1,3 +1,17 @@
+/**
+ * This module will perform an inner join on mongo native collections and any other collection which supports the
+ * mongo-native collection API. We realize that mongodb is not meant to be used this way, but there are certainly instances
+ * where a fk relationship is an appropriate way to NRDB and a necessary way to retrieve data. Honed in the fires of
+ * artificial perf testing, this is mongo-fast-join.
+ *
+ * The novel aspect of this project is that we paginate requests for the join documents, which leverages the parallelism
+ * of mongodb resulting in much quicker queries.
+ *
+ * Pass the query function, the queried collection, and the regular query arguments after that. At this stage you have
+ * the join object. Call join on this object to begin compiling a join command. The main idea in the join arguments is
+ * to specify the collection to join on, the key of the document in that collection to join on, and the key in the source
+ * document to join on. It's an ad hoc foreign key relationship.
+ */
 module.exports = function () {
     this.query = function (queryCollection, query, fields, options) {
         //joinStack holds all the join args to be used, is used like a callstack when exec is called

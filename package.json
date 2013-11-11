@@ -23,6 +23,5 @@
     "license": "BSD-2-Clause",
     "bugs": {
         "url": "https://github.com/Bill4Time/mongo-fast-join/issues"
-    },
-    "private": true
+    }
 }
