@@ -27,7 +27,7 @@
         "name": "Jeremy Diviney",
         "email": "jeremy@bill4time.com"
     }],
-    "license": "BSD-2-Clause",
+    "license": "The MIT License (MIT)",
     "bugs": {
         "url": "https://github.com/Bill4Time/mongo-fast-join/issues"
     }
