@@ -34,11 +34,12 @@ mongoJoin
     .query(
       //say we have blog posts and we store comments in a separate collection
       db.collection("blog_posts"),
-      {}, //query statement
-      {}, //fields
-      {
-        limit: 10000
-      })//options
+        {}, //query statement
+        {}, //fields
+        {
+            limit: 10000//options
+        }
+    )
     .join({
         joinCollection: db.collection("comments"),
         //respect the dot notation, multiple keys can be specified in this array
@@ -66,3 +67,30 @@ mongoJoin
     });
 
 ```
+
+The resulting document should have 10000 blog posts with the comments and participating users attached to each relevant 
+post in a structure like this:
+
+```
+
+{
+    title: "The title of the hypothetical blog post",
+    body: "The body of the hypothetical blog post"
+    date: "tomorrow",//isoDate format!
+    comment_ids: [1],
+    
+    comments: {//LOOK: This subdocument will be an object if there is only one match and an array if there are many matches
+        _id: 1,
+        userId: "someId",
+        userName: "Grizzly Adams"
+    },
+    users_participating: {
+        _id: "someId",
+        name: "Grizzly Adams"
+    }
+
+}
+
+```
+
+
