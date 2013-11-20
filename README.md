@@ -29,11 +29,17 @@ This is the syntax we arrived at:
 
 var MJ = require("mongo-fast-join"),
     mongoJoin = new MJ();
+
+/*
+    Say we have a collection of sales where each document holds a manual reference to the product sold. We can join the
+    full product document into each sale document. Lets also assume that each product has a reference to some
+    manufacturer info.
+*/
         
 mongoJoin
     .query(
-      //say we have blog posts and we store comments in a separate collection
-      db.collection("blog_posts"),
+      //say we have sales records and we store all the products for sale in a different collection
+      db.collection("sales"),
         {}, //query statement
         {}, //fields
         {
@@ -41,54 +47,47 @@ mongoJoin
         }
     )
     .join({
-        joinCollection: db.collection("comments"),
-        //respect the dot notation, multiple keys can be specified in this array
-        leftKeys: ["comment_ids"],
+        joinCollection: db.collection("products"),
+        //respects the dot notation, multiple keys can be specified in this array
+        leftKeys: ["product_id"],
         //This is the key of the document in the right hand document
-        rightKeyPropertyPaths: ["_id"],
+        rightKeys: ["_id"],
         //This is the new subdocument that will be added to the result document
-        newKey: "comments",
-        pageSize: 25,//would recommend experimenting, to find the best size
+        newKey: "product"
     })
     .join({
         //say that we want to get the users that commented too
-        joinCollection: db.collection("users"),
+        joinCollection: db.collection("manufacturers"),
         //This is cool, you can join on the new documents you add to the source document
-        leftKeys: ["comments.userId", "comments.userName"],
-        rightKeyPropertyPaths: ["_id", "name"],
+        leftKeys: ["product.manufacturer_id"],//This field accepts many keys, which amounts to a composite key
+        rightKeys: ["_id"],
         //unfortunately, as of now, you can only add subdocuments at the root level, not to arrays of subdocuments
-        newKey: "users_participating",
-        pageSize: 25
+        newKey: "manufacturer"//The upside is that this serve the majority of cases
     })
     //Call exec to run the compiled query and catch any errors and results, in the callback
     .exec(function (err, items) {
-        
         console.log(items);
     });
 
 ```
 
-The resulting document should have 10000 blog posts with the comments and participating users attached to each relevant 
-post in a structure like this:
+The resulting document should have 10000 sales records with the product sold and manufaturer info attached to each sale
+in a structure like this:
 
 ```
 
 {
-    title: "The title of the hypothetical blog post",
-    body: "The body of the hypothetical blog post"
-    date: "tomorrow",//isoDate format!
-    comment_ids: [1],
-    
-    comments: {//LOOK: This subdocument will be an object if there is only one match and an array if there are many matches
-        _id: 1,
-        userId: "someId",
-        userName: "Grizzly Adams"
+    _id: 1,
+    product_id: 2,
+    product: {
+        _id: 2,
+        manufacturer_id: 3
+        name: "Wooden Spoon"
     },
-    users_participating: {
-        _id: "someId",
-        name: "Grizzly Adams"
+    manufacturer: {
+        _id: 3,
+        name: "Betty Crocker"
     }
-
 }
 
 ```
