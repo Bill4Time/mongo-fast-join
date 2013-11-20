@@ -23,14 +23,17 @@ module.exports = function () {
         /**
          * Begin setting up the join operation
          *
-         * @param args.getKey Function get the key for the resulting set
          * @param args.joinCollection MongoDB.Collection the collection to join on
-         * @param args.joinKey String the keyname to join on
-         * @param args.getJoinKey Function get the key to join on ??
+         * @param args.leftKeys Array(String) The foreign key(s) in the left hand document
+         * @param {String} args.leftKey Same as leftKeys, better syntax for when there is no composite key
+         * @param {Array} args.rightKeys The primary key(s) in the right hand document which will uniquely
+         * identify that document
+         * @param {String} args.rightKey The right hand key, same as right keys just allows for no array
          * @param args.newKey String The name of the property to map the joined document into
-         * @param args.fields Object The fields to grab from the query
          * @param args.callback Function The function that will be called with the error message and results set at each
-         * join level
+         * level of the join operation
+         * @param [args.pageSize] Number The number of documents matched per request. The default is 25 which was a good
+         * performer in our case
          */
         this.join = function (args) {
             joinStack.push(args);
@@ -181,9 +184,8 @@ module.exports = function () {
         function arrayJoin (results, args) {
             var srcDataArray = results,//use these results as the source of the join
                 joinCollection = args.joinCollection,//This is the mongoDB.Collection to use to join on
-                rightKeyPropertyPaths = args.rightKeyPropertyPaths,//Get the value of the key being joined upon
+                rightKeys = args.rightKeys || [args.rightKey],//Get the value of the key being joined upon
                 newKey = args.newKey,//The new field onto which the joined document will be mapped
-                fields = args.fields,//The fields to retrieve for the join queries, must include the join key
                 callback = args.callback,//The callback to call at this level of the join
 
                 length,
@@ -194,8 +196,7 @@ module.exports = function () {
                 accessors = [],
                 joinLookups = [],
                 inQueries = [],
-                leftKeys = args.leftKeys,
-                rightKeys = args.rightKeyPropertyPaths;//place to put incoming join results
+                leftKeys = args.leftKeys || [args.leftKey];//place to put incoming join results
 
             rightKeys.forEach(function () {
                 inQueries.push([]);
@@ -218,11 +219,11 @@ module.exports = function () {
                 srcDataArray = [srcDataArray];
             }
 
-            subqueries = getSubqueries(inQueries, joinLookups, args.pageSize || 5, rightKeys);//example
+            subqueries = getSubqueries(inQueries, joinLookups, args.pageSize || 25, rightKeys);//example
             runSubqueries(subqueries, function (items) {
                 var un;
                 performJoining(srcDataArray, items, {
-                    rightKeyPropertyPaths: rightKeyPropertyPaths,
+                    rightKeyPropertyPaths: rightKeys,
                     newKey: newKey,
                     keyHashBin: keyHashBin
                 });
