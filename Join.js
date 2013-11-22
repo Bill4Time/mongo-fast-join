@@ -13,12 +13,29 @@
  * document to join on. It's an ad hoc foreign key relationship.
  */
 module.exports = function () {
-    this.query = function (queryCollection, query, fields, options) {
+    /**
+     * The initial query which will define the set of documents being joined on.
+     * @param queryCollection The collection to query from. Should be an object which implements the mongo native
+     * collection API
+     * @param query The query by example object to use to retrieve documents
+     * @param [fields] The fields to request in the initial query
+     * @param [options] The query options
+     * @param [sort] The sort object which will be applied to the query
+     * @returns {exports}
+     */
+    this.query = function (queryCollection, query, fields, options, sort) {
         //joinStack holds all the join args to be used, is used like a callstack when exec is called
+        fields = fields || {};
+        options = options || {};
+
         var joinStack = [],
             finalCallback,//This is the final function specified as the callback to call
             cursor = queryCollection.find(query, fields, options),
             that = this;
+
+        if (sort) {
+            cursor.sort(sort);
+        }
 
         /**
          * Begin setting up the join operation
