@@ -20,10 +20,9 @@ module.exports = function () {
      * @param query The query by example object to use to retrieve documents
      * @param [fields] The fields to request in the initial query
      * @param [options] The query options
-     * @param [sort] The sort object which will be applied to the query
      * @returns {exports}
      */
-    this.query = function (queryCollection, query, fields, options, sort) {
+    this.query = function (queryCollection, query, fields, options) {
         //joinStack holds all the join args to be used, is used like a callstack when exec is called
         fields = fields || {};
         options = options || {};
@@ -32,10 +31,6 @@ module.exports = function () {
             finalCallback,//This is the final function specified as the callback to call
             cursor = queryCollection.find(query, fields, options),
             that = this;
-
-        if (sort) {
-            cursor.sort(sort);
-        }
 
         /**
          * Begin setting up the join operation
