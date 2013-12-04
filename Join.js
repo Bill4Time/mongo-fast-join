@@ -459,8 +459,8 @@ module.exports = function () {
         var i;
         for (i = 0; i < array.length; i += 1) {
             if(!array[i][key]) {
-                i -= 1;//Account for the removed element
                 array.splice(i, 1);
+                i -= 1;//Account for the removed element
             }
         }
     }
