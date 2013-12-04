@@ -40,6 +40,11 @@ module.exports = function () {
          * @param {String} args.leftKey Same as leftKeys, better syntax for when there is no composite key
          * @param {Array} args.rightKeys The primary key(s) in the right hand document which will uniquely
          * identify that document
+         * @param {Object} args.joinQuery A filtering query to perform at this level of the join corresponding to
+         * mongodb's query by example objects.
+         * @param {String} [args.joinType] Either 'inner' or 'left' is supported. Inner excludes records for which
+         * there is no match in the right hand table at each level of the join. THIS MAY CAUSE YOU PROBLEMS WITH RECORDS
+         * DISAPPEARING, RECOMMEND NOT SPECIFYING JOIN TYPE!
          * @param {String} args.rightKey The right hand key, same as right keys just allows for no array
          * @param args.newKey String The name of the property to map the joined document into
          * @param args.callback Function The function that will be called with the error message and results set at each
@@ -196,7 +201,7 @@ module.exports = function () {
         function arrayJoin (results, args) {
             var srcDataArray = results,//use these results as the source of the join
                 joinCollection = args.joinCollection,//This is the mongoDB.Collection to use to join on
-                joinQuery = args.joinQuery || '',
+                joinQuery = args.joinQuery,
                 joinType = args.joinType || 'left',
                 rightKeys = args.rightKeys || [args.rightKey],//Get the value of the key being joined upon
                 newKey = args.newKey,//The new field onto which the joined document will be mapped
@@ -242,15 +247,9 @@ module.exports = function () {
                     keyHashBin: keyHashBin
                 });
 
-                switch(joinType) {
-                    case 'inner':
-                        srcDataArray = removeNonMatchsLeft(srcDataArray, newKey);
-                        break;
-                    case 'left':
-                        break;
-                    default:
-                };
-
+                if (joinType === "inner") {
+                    removeNonMatchesLeft(srcDataArray, newKey);
+                }
 
                 if (joinStack.length > 0) {
                     arrayJoin(srcDataArray, joinStack.shift());
@@ -273,7 +272,6 @@ module.exports = function () {
             i,
             inQuery,
             orQuery,
-            otherQuery,
             queryArray,
             from,
             to;
@@ -295,6 +293,8 @@ module.exports = function () {
 
             if(otherQuery) {
                 queryArray.push({ $match: otherQuery });
+                //Push this to the end on the assumption that the join properties will be indexed, and the arbitrary 
+                //filter properties won't be indexed.
             }
             subqueries.push(queryArray);
         }
@@ -450,20 +450,18 @@ module.exports = function () {
         }
     }
 
-
     /**
-     * Remove element from array if not key.
-     * @param array
-     * @param key
-     * @return Array
+     * Remove element from array if key doesn't exist for that element.
+     * @param array The array to be modified
+     * @param key The key that should exist if the element will not be removed
      */
-    function removeNonMatchsLeft (array, key) {
-        var length = array.length;
-        for (i = 0; i < length; i += 1) {
+    function removeNonMatchesLeft (array, key) {
+        var i;
+        for (i = 0; i < array.length; i += 1) {
             if(!array[i][key]) {
-                delete array[i];
+                i -= 1;//Account for the removed element
+                array.splice(i, 1);
             }
         }
-        return array;
     }
 };
