@@ -197,6 +197,7 @@ module.exports = function () {
             var srcDataArray = results,//use these results as the source of the join
                 joinCollection = args.joinCollection,//This is the mongoDB.Collection to use to join on
                 joinQuery = args.joinQuery || '',
+                joinType = args.joinType || 'left',
                 rightKeys = args.rightKeys || [args.rightKey],//Get the value of the key being joined upon
                 newKey = args.newKey,//The new field onto which the joined document will be mapped
                 callback = args.callback,//The callback to call at this level of the join
@@ -240,6 +241,16 @@ module.exports = function () {
                     newKey: newKey,
                     keyHashBin: keyHashBin
                 });
+
+                switch(joinType) {
+                    case 'inner':
+                        srcDataArray = removeNonMatchsLeft(srcDataArray, newKey);
+                        break;
+                    case 'left':
+                        break;
+                    default:
+                };
+
 
                 if (joinStack.length > 0) {
                     arrayJoin(srcDataArray, joinStack.shift());
@@ -437,5 +448,22 @@ module.exports = function () {
         if (typeof fn === "function") {
             fn.apply(fn, args);
         }
+    }
+
+
+    /**
+     * Remove element from array if not key.
+     * @param array
+     * @param key
+     * @return Array
+     */
+    function removeNonMatchsLeft (array, key) {
+        var length = array.length;
+        for (i = 0; i < length; i += 1) {
+            if(!array[i][key]) {
+                delete array[i];
+            }
+        }
+        return array;
     }
 };
