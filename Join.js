@@ -196,6 +196,7 @@ module.exports = function () {
         function arrayJoin (results, args) {
             var srcDataArray = results,//use these results as the source of the join
                 joinCollection = args.joinCollection,//This is the mongoDB.Collection to use to join on
+                joinQuery = args.joinQuery || '',
                 rightKeys = args.rightKeys || [args.rightKey],//Get the value of the key being joined upon
                 newKey = args.newKey,//The new field onto which the joined document will be mapped
                 callback = args.callback,//The callback to call at this level of the join
@@ -231,7 +232,7 @@ module.exports = function () {
                 srcDataArray = [srcDataArray];
             }
 
-            subqueries = getSubqueries(inQueries, joinLookups, args.pageSize || 25, rightKeys);//example
+            subqueries = getSubqueries(inQueries, joinLookups, joinQuery, args.pageSize || 25, rightKeys);//example
             runSubqueries(subqueries, function (items) {
                 var un;
                 performJoining(srcDataArray, items, {
@@ -255,12 +256,14 @@ module.exports = function () {
     /**
      * Get the paged subqueries
      */
-    function getSubqueries (inQueries, orQueries, pageSize, rightKeys) {
+    function getSubqueries (inQueries, orQueries, otherQuery, pageSize, rightKeys) {
         var subqueries = [],
             numberOfChunks,
             i,
             inQuery,
             orQuery,
+            otherQuery,
+            queryArray,
             from,
             to;
         //                                                   this is a stupid way to turn numbers into 1
@@ -277,15 +280,13 @@ module.exports = function () {
 
             orQuery = { $or: orQueries.slice(from, to)};
 
-            subqueries.push([
-                {
-                    $match: inQuery
-                },
-                {
-                    $match: orQuery
-                }]);
-        }
+            queryArray = [ { $match: inQuery }, { $match: orQuery } ];
 
+            if(otherQuery) {
+                queryArray.push({ $match: otherQuery });
+            }
+            subqueries.push(queryArray);
+        }
         return subqueries;
     }
 
