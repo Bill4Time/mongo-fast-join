@@ -13,6 +13,7 @@
  * document to join on. It's an ad hoc foreign key relationship.
  */
 module.exports = function () {
+    var _this = this;
     /**
      * The initial query which will define the set of documents being joined on.
      * @param queryCollection The collection to query from. Should be an object which implements the mongo native
@@ -75,7 +76,7 @@ module.exports = function () {
          * @param value The key value
          * @returns {*}
          */
-        function putKeyInBin (bin, value) {
+        this._putKeyInBin = function putKeyInBin (bin, value) {
             if (isNullOrUndefined(bin[value])) {
                 bin = bin[value] = {$val: value};
             } else {
@@ -83,7 +84,7 @@ module.exports = function () {
             }
 
             return bin;//where we are in the hash tree
-        }
+        };
 
         /**
          * Put a new index value into the array at the given bin, making a new array if there is none.
@@ -91,7 +92,7 @@ module.exports = function () {
          * @param index the index value to put in the array
          * @returns the newly created array if there was one created. Must be assigned into the correct spot
          */
-        function pushOrPut (currentBin, index) {
+        this._pushOrPut = function pushOrPut (currentBin, index) {
             var temp = currentBin;
             if (Array.isArray(currentBin)) {
                 if (currentBin.indexOf(index) === -1) {
@@ -101,7 +102,7 @@ module.exports = function () {
                 temp = [index];
             }
             return temp;
-        }
+        };
 
         /**
          * Create the hash table which maps unique left key combination to an array of numbers representing the indexes of the
@@ -113,7 +114,7 @@ module.exports = function () {
          * @param accessors The accessor functions which retrieve the value for each join key from the leftValue.
          * @param rightKeys The keys in the right hand set which are being joined on
          */
-        function buildHashTableIndices (bin, leftValue, index, accessors, rightKeys) {
+        this._buildHashTableIndices = function buildHashTableIndices (bin, leftValue, index, accessors, rightKeys) {
             var i,
                 length = accessors.length,
                 lastBin;
@@ -153,7 +154,7 @@ module.exports = function () {
                     bin = putKeyInBin(bin, val);
                 }
             }
-        }
+        };
 
         /**
          * Build the in and or queries that will be used to query for the join documents.
@@ -164,7 +165,7 @@ module.exports = function () {
          * @param orQueries The total list of $or queries generated
          * @param inQueries The total list of $in queries generated
          */
-        function buildQueriesFromHashBin (keyHashBin, rightKeys, level, valuePath, orQueries, inQueries) {
+        this._buildQueriesFromHashBin = function buildQueriesFromHashBin (keyHashBin, rightKeys, level, valuePath, orQueries, inQueries) {
             var keys = Object.getOwnPropertyNames(keyHashBin),
                 or;
 
@@ -191,14 +192,14 @@ module.exports = function () {
                     }
                 });
             }
-        }
+        };
 
         /**
          * Begin the joining process by compiling some data and performing a query for the objects to be joined.
          * @param results The results of the previous join or query
          * @param args The user supplied arguments which will configure this join
          */
-        function arrayJoin (results, args) {
+        this._arrayJoin = function arrayJoin (results, args) {
             var srcDataArray = results,//use these results as the source of the join
                 joinCollection = args.joinCollection,//This is the mongoDB.Collection to use to join on
                 joinQuery = args.joinQuery,
@@ -258,7 +259,7 @@ module.exports = function () {
                 }
                 callIfFunction(callback, [un, srcDataArray]);
             }, joinCollection);
-        }
+        };
 
         return this;
     };
@@ -266,7 +267,7 @@ module.exports = function () {
     /**
      * Get the paged subqueries
      */
-    function getSubqueries (inQueries, orQueries, otherQuery, pageSize, rightKeys) {
+    this._getSubqueries = function getSubqueries (inQueries, orQueries, otherQuery, pageSize, rightKeys) {
         var subqueries = [],
             numberOfChunks,
             i,
@@ -299,12 +300,12 @@ module.exports = function () {
             subqueries.push(queryArray);
         }
         return subqueries;
-    }
+    };
 
     /**
      * Run the sub queries individually, leveraging concurrency on the server for better performance.
      */
-    function runSubqueries (subQueries, callback, collection) {
+    this._runSubqueries = function runSubqueries (subQueries, callback, collection) {
         var i,
             responsesReceived = 0,
             length = subQueries.length,
@@ -327,7 +328,7 @@ module.exports = function () {
         }
 
         return joinedSet;
-    }
+    };
 
     /**
      * Use the lookup value type to build an accessor function for each join key. The lookup algorithm respects dot
@@ -335,7 +336,7 @@ module.exports = function () {
      * @param lookupValue The key being used to lookup the value.
      * @returns {Function} used to lookup value from an object
      */
-    function getKeyValueAccessorFromKey (lookupValue) {
+    this._getKeyValueAccessorFromKey = function getKeyValueAccessorFromKey (lookupValue) {
         var accessorFunction;
         if (typeof lookupValue === "string") {
             accessorFunction = function (resultValue) {
@@ -350,7 +351,7 @@ module.exports = function () {
         }
 
         return accessorFunction;
-    }
+    };
 
     /**
      * Join the join set with the original query results at the new key.
@@ -358,7 +359,7 @@ module.exports = function () {
      * @param joinSet The results returned from the join query
      * @param joinArgs The arguments used to join the source to the join set
      */
-    function performJoining (sourceData, joinSet, joinArgs) {
+    this._performJoining = function performJoining (sourceData, joinSet, joinArgs) {
         var length = joinSet.length,
             i,
             rightKeyAccessors = [];
@@ -392,17 +393,20 @@ module.exports = function () {
                 }
             });
         }
-    }
+    };
 
-    function isNullOrUndefined (val) {
+    this._isNullOrUndefined = function isNullOrUndefined (val) {
         return typeof val === "undefined" || val === null;
-    }
+    };
 
     /**
-     * Access an object without having to worry about "cannot access property '' of undefined" errors
+     * Access an object without having to worry about "cannot access property '' of undefined" errors.
+     * Some extra, necessary and ugly convenience built in is that, if we encounter an array on the lookup
+     * path, we recursively drill down into each array value, returning the values discovered in each of those
+     * paths. It's kind of a headache, but necessary.
      * @returns The value you were looking for or undefined
      */
-    function safeObjectAccess () {
+    this._safeObjectAccess = function safeObjectAccess () {
         var object = arguments[0],
             length = arguments.length,
             args = arguments,
@@ -410,7 +414,7 @@ module.exports = function () {
             results,
             temp;
 
-        if (!isNullOrUndefined(object)) {
+        if (!_this._isNullOrUndefined(object)) {
             for (i = 1; i < length; i += 1) {
                 if (Array.isArray(object)) {//if it's an array find the values from those results
                     results = [];
@@ -437,31 +441,31 @@ module.exports = function () {
         }
 
         return results || object
-    }
+    };
 
     /**
      * Simply call the first argument if it is the typeof a function
      * @param fn The argument to call if it is a function
      * @param args the arguments to call the function with
      */
-    function callIfFunction (fn, args) {
+    this._callIfFunction = function callIfFunction (fn, args) {
         if (typeof fn === "function") {
             fn.apply(fn, args);
         }
-    }
+    };
 
     /**
      * Remove element from array if key doesn't exist for that element.
      * @param array The array to be modified
      * @param key The key that should exist if the element will not be removed
      */
-    function removeNonMatchesLeft (array, key) {
+    this._removeNonMatchesLeft = function removeNonMatchesLeft (array, key) {
         var i;
         for (i = 0; i < array.length; i += 1) {
-            if(!array[i][key]) {
+            if(!array[i][key]) {//remember, you're inserting sub docs, there is no valid falsy here
                 array.splice(i, 1);
                 i -= 1;//Account for the removed element
             }
         }
-    }
+    };
 };
