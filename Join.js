@@ -372,7 +372,7 @@ module.exports = function () {
             var rightRecord = joinSet[i],
                 currentBin = joinArgs.keyHashBin;
 
-            if (isNullOrUndefined(rightRecord)) {
+            if (_this._isNullOrUndefined(rightRecord)) {
                 continue;//move onto the next, can't join on records that don't exist
             }
 
