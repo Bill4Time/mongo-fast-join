@@ -124,6 +124,7 @@ describe("Join", function () {
             assert(!isNullOrUndefined(/1/));
             assert(!isNullOrUndefined(true));
             assert(!isNullOrUndefined(false));
+            assert(!isNullOrUndefined(function () {}));
         });
     });
 });

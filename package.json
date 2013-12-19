@@ -1,6 +1,6 @@
 {
     "name": "mongo-fast-join",
-    "version": "0.0.10",
+    "version": "0.0.11",
     "description": "Join subdocuments into other mongo documents from other collections",
     "main": "Join.js",
     "scripts": {
