@@ -239,7 +239,8 @@ module.exports = function () {
                 accessors = [],
                 joinLookups = [],
                 inQueries = [],
-                leftKeys = args.leftKeys || [args.leftKey];//place to put incoming join results
+                leftKeys = args.leftKeys || [args.leftKey], //place to put incoming join results
+                nestingKeys = leftKeys.split('.').slice(0,-1);
 
             rightKeys.forEach(function () {
                 inQueries.push([]);
@@ -268,6 +269,7 @@ module.exports = function () {
                 performJoining(srcDataArray, items, {
                     rightKeyPropertyPaths: rightKeys,
                     newKey: newKey,
+                    nesting: nestingKeys,
                     keyHashBin: keyHashBin
                 });
 
@@ -411,17 +413,25 @@ module.exports = function () {
             rightKeyAccessors.forEach(function (accessor) {
                 currentBin = currentBin[accessor(rightRecord)];
             });
-
+            
             currentBin.forEach(function (sourceDataIndex) {
-                var theObject = sourceData[sourceDataIndex][joinArgs.newKey];
+                
+                var theObject = sourceData[sourceDataIndex];
+                
+                for (var i=0; i<joinArgs.nestingKeys.length; i++) {
+                  theObject = theObject[joinArgs.nestingKeys[i]];
+                }
+                
+                theObject[i][joinArgs.newKey] = rightRecord;
 
-                if (isNullOrUndefined(theObject)) {//Handle adding multiple matches to the same sub document
-                    sourceData[sourceDataIndex][joinArgs.newKey] = rightRecord;
+               /* if (isNullOrUndefined(theObject)) {//Handle adding multiple matches to the same sub document
+                    sourceObj[joinArgs.newKey] = rightRecord;
                 } else if (Array.isArray(theObject)) {
+                    // merge theObject array with the rightRecord
                     theObject.push(rightRecord);
                 } else {
-                    sourceData[sourceDataIndex][joinArgs.newKey] = [theObject, rightRecord];
-                }
+                    sourceObj[joinArgs.newKey] = [theObject, rightRecord];
+                }*/
             });
         }
     }
