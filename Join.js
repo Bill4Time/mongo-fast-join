@@ -422,8 +422,11 @@ module.exports = function () {
                   theObject = theObject[joinArgs.nestingKeys[i]];
                 }
                 
-                theObject[i][joinArgs.newKey] = rightRecord;
-
+                if (Array.isArray(theObject)) {
+                    theObject[i][joinArgs.newKey] = rightRecord;
+                } else {
+                    theObject[joinArgs.newKey] = rightRecord;
+                }
                /* if (isNullOrUndefined(theObject)) {//Handle adding multiple matches to the same sub document
                     sourceObj[joinArgs.newKey] = rightRecord;
                 } else if (Array.isArray(theObject)) {
