@@ -293,7 +293,7 @@ module.exports = function () {
     /**
      * Get the paged subqueries
      */
-    function getSubqueries (inQueries, orQueries, otherQuery, pageSize, rightKeys) {
+    function getSubqueries (inQueries, orQueries, otherQuery, pageSize, rightKeys, projection) {
         var subqueries = [],
             numberOfChunks,
             i,
