@@ -239,8 +239,9 @@ module.exports = function () {
                 accessors = [],
                 joinLookups = [],
                 inQueries = [],
-                leftKeys = args.leftKeys || [args.leftKey];//place to put incoming join results
-
+                leftKeys = args.leftKeys || [args.leftKey], //place to put incoming join results
+                projection = args.projection;
+                
             rightKeys.forEach(function () {
                 inQueries.push([]);
             });
@@ -262,7 +263,7 @@ module.exports = function () {
                 srcDataArray = [srcDataArray];
             }
 
-            subqueries = getSubqueries(inQueries, joinLookups, joinQuery, args.pageSize || 25, rightKeys);//example
+            subqueries = getSubqueries(inQueries, joinLookups, joinQuery, args.pageSize || 25, rightKeys, projection);//example
             runSubqueries(subqueries, function (items) {
                 var un;
                 performJoining(srcDataArray, items, {
@@ -317,6 +318,8 @@ module.exports = function () {
 
             queryArray = [ { $match: inQuery }, { $match: orQuery } ];
 
+            queryArray.push({ $project: projection });
+            
             if(otherQuery) {
                 queryArray.push({ $match: otherQuery });
                 //Push this to the end on the assumption that the join properties will be indexed, and the arbitrary 
