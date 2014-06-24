@@ -240,6 +240,7 @@ module.exports = function () {
                 joinLookups = [],
                 inQueries = [],
                 leftKeys = args.leftKeys || [args.leftKey], //place to put incoming join results
+                nestingKeys = leftKeys[0].split('.').slice(0, -1),
                 projection = args.projection;
                 
             rightKeys.forEach(function () {
@@ -269,6 +270,8 @@ module.exports = function () {
                 performJoining(srcDataArray, items, {
                     rightKeyPropertyPaths: rightKeys,
                     newKey: newKey,
+                    nestingKeys: nestingKeys,
+                    leftKeys: leftKeys,
                     keyHashBin: keyHashBin
                 });
 
@@ -416,7 +419,22 @@ module.exports = function () {
             });
 
             currentBin.forEach(function (sourceDataIndex) {
-                var theObject = sourceData[sourceDataIndex][joinArgs.newKey];
+                var theObject = sourceData[sourceDataIndex];
+                
+                for (var i=0; i<joinArgs.nestingKeys.length; i++) {
+                  theObject = theObject[joinArgs.nestingKeys[i]];
+                }
+                
+                if (Array.isArray(theObject)) { 
+                    // if we are joining on an array
+                    // correlate the rightRecord with the correct array position through args.leftKeys
+                    var array_pos = correlate(theObject, rightRecord, joinArgs.leftKeys, joinArgs.rightKeyPropertyPaths)
+                    theObject[array_pos][joinArgs.newKey] = rightRecord;
+                } else {
+                    theObject[joinArgs.newKey] = rightRecord;
+                }
+                
+                /*var theObject = sourceData[sourceDataIndex][joinArgs.newKey];
 
                 if (isNullOrUndefined(theObject)) {//Handle adding multiple matches to the same sub document
                     sourceData[sourceDataIndex][joinArgs.newKey] = rightRecord;
@@ -424,12 +442,32 @@ module.exports = function () {
                     theObject.push(rightRecord);
                 } else {
                     sourceData[sourceDataIndex][joinArgs.newKey] = [theObject, rightRecord];
-                }
+                }*/
             });
         }
     }
 
     this._performJoining = performJoining;
+
+    function correlate(array, rightRecord, leftKeys, rightKeys) {
+        // map basename tp leftKeys and rightKeys
+        for (var i=0; i<leftKeys.length; i++) {
+            leftKeys[i] = leftKeys[i].split('.').slice(-1)[0];
+            rightKeys[i] = rightKeys[i].split('.').slice(-1)[0];
+        }
+        
+        for (var i=0; i<array.length; i++) {
+            var add = true;
+            for (var j=0; j<leftKeys.length; j++) {
+                add = add && (array[i][leftKeys[j]] == rightRecord[rightKeys[j]])
+            }
+            
+            if (add) {
+                return i;
+            }
+        }
+        return;
+    }
 
     function isNullOrUndefined (val) {
         return typeof val === "undefined" || val === null;
