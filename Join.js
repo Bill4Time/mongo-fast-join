@@ -240,7 +240,7 @@ module.exports = function () {
                 joinLookups = [],
                 inQueries = [],
                 leftKeys = args.leftKeys || [args.leftKey], //place to put incoming join results
-                nestingKeys = leftKeys.split('.').slice(0,-1);
+                nestingKeys = leftKeys[0].split('.').slice(0,-1);
 
             rightKeys.forEach(function () {
                 inQueries.push([]);
@@ -269,7 +269,7 @@ module.exports = function () {
                 performJoining(srcDataArray, items, {
                     rightKeyPropertyPaths: rightKeys,
                     newKey: newKey,
-                    nesting: nestingKeys,
+                    nestingKeys: nestingKeys,
                     keyHashBin: keyHashBin
                 });
 
